@@ -103,12 +103,11 @@ def ctc_loss(
 
 
 if __name__ == "__main__":
-    print(NEG_INF)
-    T, B, C = 128, 256, 32
+    T, B, C = 128, 8, 32
     dt = 50
     blank = 0
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    seed = 1
+    seed = 42
     atol = 1e-3
 
     logits = torch.randn(T, B, C, device=device, requires_grad=True)
@@ -116,3 +115,14 @@ if __name__ == "__main__":
     input_lengths = torch.full((B,), T, dtype=torch.long, device=device)
     target_lengths = torch.full((B,), dt, dtype=torch.long, device=device)
     log_probs = logits.log_softmax(dim=-1)
+
+    torch_ctc = torch.nn.functional.ctc_loss(
+        log_probs, targets, input_lengths, target_lengths, blank=blank, reduction="none"
+    )
+    (torch_ctc_grad,) = torch.autograd.grad(torch_ctc.mean(), logits, retain_graph=True)
+
+    local_ctc = ctc_loss(log_probs, targets, input_lengths, target_lengths)
+    (local_ctc_grad,) = torch.autograd.grad(local_ctc.mean(), logits, retain_graph=True)
+
+    print("CTC Losses Match:", torch.allclose(torch_ctc, local_ctc, atol=atol))
+    print("Grad matches:", torch.allclose(torch_ctc_grad, local_ctc_grad, atol=atol))
